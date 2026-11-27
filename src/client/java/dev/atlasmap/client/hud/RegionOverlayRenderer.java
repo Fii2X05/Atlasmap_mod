@@ -4,15 +4,26 @@ import dev.atlasmap.client.region.ClientRegionState;
 import dev.atlasmap.region.ChunkPos2D;
 import dev.atlasmap.region.Region;
 import dev.atlasmap.region.RegionManager;
+import dev.atlasmap.region.RegionTier;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.util.Mth;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+
 /**
  * Garis batas region di minimap. Digambar di dalam matriks yang sama dengan tekstur peta
  * (diputar + diskalakan), dengan satuan 1 unit = 1 blok, sehingga ikut berputar bersama peta.
+ *
+ * <p>Region digambar per tier: OUTPOST lebih dulu, NATION terakhir, supaya batas negara
+ * yang lebih tebal selalu tampil di atas batas kota dan distrik di dalamnya.
  */
 final class RegionOverlayRenderer {
+
+	/** Batas atas ketebalan garis dalam blok, setelah dikali pengali tier. */
+	private static final int MAX_THICKNESS = 16;
 
 	private RegionOverlayRenderer() {
 	}
@@ -40,8 +51,8 @@ final class RegionOverlayRenderer {
 
 		// Sudut kotak yang berotasi menjangkau halfSize*sqrt(2) piksel dari pusat.
 		int chunkRadius = (int) Math.ceil((halfSize * 1.42 / ppb) / 16.0) + 1;
-		// Ketebalan garis ~2 piksel, dinyatakan dalam blok.
-		int thickness = Math.min(8, Math.max(1, (int) Math.round(2.0 / ppb)));
+		// Ketebalan dasar ~2 piksel, dinyatakan dalam blok. Dikali pengali tier per region.
+		int baseThickness = Math.min(8, Math.max(1, (int) Math.round(2.0 / ppb)));
 
 		var pose = graphics.pose();
 		pose.pushMatrix();
@@ -50,11 +61,11 @@ final class RegionOverlayRenderer {
 		pose.scale((float) ppb, (float) ppb);
 		pose.translate((float) -(view.originX() - originBlockX), (float) -(view.originZ() - originBlockZ));
 
-		for (Region region : manager.all()) {
-			if (!region.getDimension().equals(dimension)) {
-				continue;
-			}
-			int alpha = Math.round(region.getOpacity() * 255f);
+		for (Region region : regionsInDrawOrder(manager, dimension)) {
+			RegionTier tier = region.getTier();
+			int thickness = Math.min(MAX_THICKNESS,
+					Math.max(1, Math.round(baseThickness * tier.thicknessMultiplier())));
+			int alpha = Math.round(region.getOpacity() * tier.alphaMultiplier() * 255f);
 			int color = (alpha << 24) | (region.getColorArgb() & 0x00FFFFFF);
 
 			for (int cx = originChunkX - chunkRadius; cx <= originChunkX + chunkRadius; cx++) {
@@ -85,5 +96,18 @@ final class RegionOverlayRenderer {
 		}
 
 		pose.popMatrix();
+	}
+
+	/** Region di dimensi ini, diurutkan dari tier terbawah (OUTPOST) ke teratas (NATION). */
+	private static List<Region> regionsInDrawOrder(RegionManager manager, String dimension) {
+		List<Region> ordered = new ArrayList<>();
+		for (Region region : manager.all()) {
+			if (region.getDimension().equals(dimension)) {
+				ordered.add(region);
+			}
+		}
+		// Ordinal kecil = tier lebih luas; digambar terakhir supaya tampil paling atas.
+		ordered.sort(Comparator.comparingInt((Region r) -> r.getTier().ordinal()).reversed());
+		return ordered;
 	}
 }

@@ -14,6 +14,7 @@ public final class Region {
 	private final String dimension;
 	private final Set<ChunkPos2D> chunks = new HashSet<>();
 	private BannerDesign bannerDesign;
+	private RegionTier tier = RegionTier.DEFAULT;
 	/** Bumped whenever the chunk set changes; lets renderers cache things like the label position. */
 	private int revision;
 
@@ -62,6 +63,14 @@ public final class Region {
 
 	public void setBannerDesign(BannerDesign bannerDesign) {
 		this.bannerDesign = bannerDesign;
+	}
+
+	public RegionTier getTier() {
+		return tier;
+	}
+
+	public void setTier(RegionTier tier) {
+		this.tier = tier == null ? RegionTier.DEFAULT : tier;
 	}
 
 	public String getOwner() {

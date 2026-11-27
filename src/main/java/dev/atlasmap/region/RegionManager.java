@@ -102,6 +102,9 @@ public final class RegionManager {
 				if (obj.has("opacity")) {
 					region.setOpacity(obj.get("opacity").getAsFloat());
 				}
+				if (obj.has("tier") && !obj.get("tier").isJsonNull()) {
+					region.setTier(RegionTier.fromId(obj.get("tier").getAsString()));
+				}
 				if (obj.has("banner") && obj.get("banner").isJsonObject()) {
 					JsonObject bannerObj = obj.getAsJsonObject("banner");
 					BannerDesign banner = new BannerDesign(bannerObj.get("baseColor").getAsString());
@@ -138,6 +141,7 @@ public final class RegionManager {
 			obj.addProperty("owner", region.getOwner());
 			obj.addProperty("dimension", region.getDimension());
 			obj.addProperty("opacity", region.getOpacity());
+			obj.addProperty("tier", region.getTier().name());
 			if (region.getBannerDesign() != null) {
 				JsonObject bannerObj = new JsonObject();
 				bannerObj.addProperty("baseColor", region.getBannerDesign().getBaseColorId());
