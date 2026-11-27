@@ -15,6 +15,10 @@ public final class Region {
 	private final Set<ChunkPos2D> chunks = new HashSet<>();
 	private BannerDesign bannerDesign;
 	private RegionTier tier = RegionTier.DEFAULT;
+	/** Region induk (mis. kota -> negara). {@code null} untuk region paling atas. */
+	private UUID parentId;
+	/** Hanya bermakna untuk tier TOWN; {@link RegionManager} memastikan satu ibu kota per negara. */
+	private boolean capital;
 	/** Bumped whenever the chunk set changes; lets renderers cache things like the label position. */
 	private int revision;
 
@@ -71,6 +75,24 @@ public final class Region {
 
 	public void setTier(RegionTier tier) {
 		this.tier = tier == null ? RegionTier.DEFAULT : tier;
+	}
+
+	public UUID getParentId() {
+		return parentId;
+	}
+
+	/** Dipanggil lewat {@link RegionManager#setParent}, yang melakukan validasi hierarki. */
+	void setParentIdUnchecked(UUID parentId) {
+		this.parentId = parentId;
+	}
+
+	public boolean isCapital() {
+		return capital;
+	}
+
+	/** Dipanggil lewat {@link RegionManager#setCapital}, yang menjaga satu ibu kota per negara. */
+	void setCapitalUnchecked(boolean capital) {
+		this.capital = capital;
 	}
 
 	public String getOwner() {

@@ -49,25 +49,102 @@ public final class RegionManager {
 		regions.put(region.getId(), region);
 	}
 
+	/** Menghapus region; anak-anaknya menjadi region paling atas (tanpa induk). */
 	public void remove(UUID id) {
 		regions.remove(id);
+		for (Region child : regions.values()) {
+			if (id.equals(child.getParentId())) {
+				child.setParentIdUnchecked(null);
+				child.setCapitalUnchecked(false);
+			}
+		}
 	}
 
 	/**
-	 * Adds/removes one chunk for a region. A chunk can belong to only one
-	 * region per dimension (administrative borders don't overlap), so adding
-	 * it to {@code target} takes it away from any other region first.
+	 * Mengatur induk sebuah region. Induk harus berada di dimensi yang sama dan tier-nya
+	 * lebih luas (ordinal lebih kecil). Chunk anak yang berada di luar induk dilepas.
+	 *
+	 * @param parent {@code null} untuk melepas induk
+	 * @return {@code false} jika hierarki tidak valid
 	 */
-	public void paint(Region target, ChunkPos2D pos, boolean add) {
-		if (add) {
-			for (Region other : regions.values()) {
-				if (other != target && other.getDimension().equals(target.getDimension())) {
-					other.removeChunk(pos);
-				}
+	public boolean setParent(Region child, Region parent) {
+		if (parent == null) {
+			child.setParentIdUnchecked(null);
+			child.setCapitalUnchecked(false);
+			return true;
+		}
+		if (parent == child
+				|| !parent.getDimension().equals(child.getDimension())
+				|| parent.getTier().ordinal() >= child.getTier().ordinal()) {
+			return false;
+		}
+		child.setParentIdUnchecked(parent.getId());
+		for (ChunkPos2D pos : child.getChunks().toArray(new ChunkPos2D[0])) {
+			if (!parent.containsChunk(pos)) {
+				child.removeChunk(pos);
 			}
-			target.addChunk(pos);
-		} else {
+		}
+		return true;
+	}
+
+	/**
+	 * Menetapkan ibu kota. Hanya region TOWN yang bisa jadi ibu kota, dan setiap negara
+	 * hanya boleh punya satu ibu kota: kota lain dengan induk yang sama dilepas dari status itu.
+	 */
+	public boolean setCapital(Region town, boolean capital) {
+		if (!capital) {
+			town.setCapitalUnchecked(false);
+			return true;
+		}
+		if (town.getTier() != RegionTier.TOWN || town.getParentId() == null) {
+			return false;
+		}
+		for (Region other : regions.values()) {
+			if (other != town && town.getParentId().equals(other.getParentId())) {
+				other.setCapitalUnchecked(false);
+			}
+		}
+		town.setCapitalUnchecked(true);
+		return true;
+	}
+
+	/**
+	 * Menambah atau menghapus satu chunk untuk region {@code target}.
+	 *
+	 * <p>Aturan kepemilikan: satu chunk hanya boleh dimiliki satu region per tier per dimensi,
+	 * sehingga negara dan kota boleh berbagi chunk. Kota (anak) hanya boleh mengambil chunk
+	 * yang sudah ada di dalam induknya. Saat chunk dilepas dari sebuah region, chunk itu juga
+	 * dilepas dari seluruh turunannya.
+	 *
+	 * @return {@code false} jika chunk ditolak karena di luar induk
+	 */
+	public boolean paint(Region target, ChunkPos2D pos, boolean add) {
+		if (!add) {
 			target.removeChunk(pos);
+			removeFromDescendants(target, pos);
+			return true;
+		}
+		Region parent = target.getParentId() == null ? null : regions.get(target.getParentId());
+		if (parent != null && !parent.containsChunk(pos)) {
+			return false;
+		}
+		for (Region other : regions.values()) {
+			if (other != target
+					&& other.getTier() == target.getTier()
+					&& other.getDimension().equals(target.getDimension())) {
+				other.removeChunk(pos);
+			}
+		}
+		target.addChunk(pos);
+		return true;
+	}
+
+	private void removeFromDescendants(Region parent, ChunkPos2D pos) {
+		for (Region child : regions.values()) {
+			if (parent.getId().equals(child.getParentId())) {
+				child.removeChunk(pos);
+				removeFromDescendants(child, pos);
+			}
 		}
 	}
 
@@ -104,6 +181,12 @@ public final class RegionManager {
 				}
 				if (obj.has("tier") && !obj.get("tier").isJsonNull()) {
 					region.setTier(RegionTier.fromId(obj.get("tier").getAsString()));
+				}
+				if (obj.has("parent") && !obj.get("parent").isJsonNull()) {
+					region.setParentIdUnchecked(UUID.fromString(obj.get("parent").getAsString()));
+				}
+				if (obj.has("capital") && obj.get("capital").getAsBoolean()) {
+					region.setCapitalUnchecked(true);
 				}
 				if (obj.has("banner") && obj.get("banner").isJsonObject()) {
 					JsonObject bannerObj = obj.getAsJsonObject("banner");
@@ -142,6 +225,8 @@ public final class RegionManager {
 			obj.addProperty("dimension", region.getDimension());
 			obj.addProperty("opacity", region.getOpacity());
 			obj.addProperty("tier", region.getTier().name());
+			obj.addProperty("parent", region.getParentId() == null ? null : region.getParentId().toString());
+			obj.addProperty("capital", region.isCapital());
 			if (region.getBannerDesign() != null) {
 				JsonObject bannerObj = new JsonObject();
 				bannerObj.addProperty("baseColor", region.getBannerDesign().getBaseColorId());
